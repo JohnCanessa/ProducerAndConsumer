@@ -195,33 +195,57 @@ public class Consumer {
         for (int i = 0; i < arr.length; i++)
             System.out.println("consumer <<< arr[" + i + "]: " + arr[i].toString());
 
-            
-        // **** open local file to write data ****
-        String outputFile       = "c:\\temp\\_received_file";
-        OutputStream outStream  = new FileOutputStream(outputFile);
-    
-        // **** loop receiving data from producer (server) ****
-        boolean done        = false;
-        long bytesReceived  = 0;
-        while (!done) {
+        // **** for ease of use ****
+        int entryCount = arr.length;
 
-            // **** ****
-            int len = dis.read(data, 0, ProducerAndConsumer.IO_BUFFER_SIZE);
+        // ???? ????
+        System.out.println("consumer <<< entryCount: " + entryCount);
 
-            // **** check if we are done receiving data from the producer (server) ****
-            if (len == -1) {
-                done = true;
-                continue;
-            }
+        // **** loop once per file object to receive ****
+        for (int i = 0; i < entryCount; i++) {
 
-            // **** count these bytes ****
-            bytesReceived += (long)len;
+            // **** for ease of use ****
+            String guid = arr[i].guid;
+            long length = arr[i].length;
+
+            // **** name for file object ****
+            String outputFile = "c:\\temp\\Folder2\\" + guid;
 
             // ???? ????
-            // System.out.println("consumer <<< bytesReceived: " + bytesReceived);
+            System.out.println("consumer <<< outputFile ==>" + outputFile + "<==");
 
-            // **** write data to the output file ****
-            outStream.write(data, 0, len);
+            // **** open local file to write data ****
+            OutputStream outStream = new FileOutputStream(outputFile);
+        
+            // **** loop receiving data from Producer (server) ****
+            int bytesToReceive  = 0;
+            long bytesReceived  = 0;
+            while (bytesReceived < length) {
+
+                // **** determine number of bytes to receive ****
+                if (length - bytesReceived >= ProducerAndConsumer.IO_BUFFER_SIZE)
+                    bytesToReceive = ProducerAndConsumer.IO_BUFFER_SIZE;
+                else
+                    bytesToReceive = (int)(length - bytesReceived);
+
+                // **** ****
+                int len = dis.read(data, 0, bytesToReceive);
+
+                // **** count the number of bytes received ****
+                bytesReceived += (long)len;
+
+                // ???? ????
+                // System.out.println("consumer <<< bytesReceived: " + bytesReceived);
+
+                // **** write data to the output file ****
+                outStream.write(data, 0, len);
+            }
+
+            // **** close local file ****
+            outStream.close();
+
+            // ???? ????
+            System.out.println("consumer <<< bytesReceived: " + bytesReceived);
         }
 
         // **** end timer and compute duration ****
@@ -230,12 +254,6 @@ public class Consumer {
 
         // ???? ????
         System.out.println("producer <<< duration: " + duration + " ms.");
-
-        // ???? ????
-        System.out.println("consumer <<< bytesReceived: " + bytesReceived);
-
-        // **** close local file ****
-        outStream.close();
 
         // **** close the data input stream ****
         dis.close();

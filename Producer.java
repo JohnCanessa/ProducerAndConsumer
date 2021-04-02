@@ -29,7 +29,6 @@ public class Producer {
     public int      port;
     public String   ip;
 
-
     /**
      * Constructor
      */
@@ -38,14 +37,12 @@ public class Producer {
         this.port   = port;
     }
 
-
     /**
      * Software version
      */
     public String version() {
         return "1.0.00";
     }
-
 
     /**
      * Read from the merged file information regarding the embeded objects.
@@ -58,10 +55,11 @@ public class Producer {
         byte[] bytes = new byte[64];
 
         // **** skip signature (8 bytes) ****
-        long skipped = inStream.skip(8);
+        long skip = 8;
+        long skipped = inStream.skip(skip);
 
         // ???? ????
-        System.out.println("readMergedFileInfo <<< skipped: " + skipped);
+        System.out.println("readMergedFileInfo <<< skip: " + skip + " skipped: " + skipped);
 
         // **** read bitfile count ****
         int len = inStream.read(bytes, 0, 4);
@@ -103,6 +101,9 @@ public class Producer {
                             ((bytes[1] & 0xff) << 8) |
                              (bytes[0] & 0xff);
 
+            // **** take into account the CAS_MERGE_BITFILE data structure ****
+            offset += 512;
+
             // ???? ????
             System.out.println("readMergedFileInfo <<< len: " + len + " offset: " + offset);
 
@@ -119,6 +120,7 @@ public class Producer {
                             ((bytes[1] & 0xff) << 8) |
                              (bytes[0] & 0xff);
 
+
             // ???? ????
             System.out.println("readMergedFileInfo <<< len: " + len + " length: " + length);
 
@@ -133,10 +135,7 @@ public class Producer {
         return arr;
     }
 
-
-
-
-
+    
     /**
      * Send to Consumer a list of object names, offsets and lengths.
      * 
@@ -160,9 +159,6 @@ public class Producer {
         // **** send the number of merge dir entries to the Consumer ****
         dos.write(data, 0, 4);
 
-
-
-
         // **** loop sending the merge dir entries to the Consumer ****
         for (int i = 0; i < entryCount; i++) {
 
@@ -181,15 +177,11 @@ public class Producer {
             // **** send the entry to the Consumer ****
             dos.write(data, 0, data.length);
         }
-
     }
 
 
-
-
-
     /**
-     * This is the core code for the producer.
+     * This is the main code for the Producer.
      * 
      * @throws InterruptedException
      * @throws IOException
@@ -311,59 +303,93 @@ public class Producer {
         // **** open input file ****
         InputStream inStream = new FileInputStream(inputFile);
 
-        // **** check if marks are supported ****
-        boolean markSupported = inStream.markSupported();
-
-        // ???? ????
-        System.out.println("producer <<< markSupported: " + markSupported);
-
-        // **** NOT SUPORTED ****
-        // inStream.mark(1024);
-
         // **** extract information for each object that will follow ****
         MergeDirEntry[] arr =  producer.readMergedFileInfo(inStream);
 
-        // **** NOT SUPPORTED ****
-        // inStream.reset();
-
-        // **** close stream ****
+        // **** close input stream ****
         inStream.close();
 
-        // **** open stream ****
+        // **** open input stream ****
         inStream = new FileInputStream(inputFile);
-
-
-
 
         // **** send to Consumer information for each object that will follow ****
         producer.sendObjectList(dos, arr);
 
+        // **** for ease of use ****
+        int entryCount = arr.length;
 
+        // ???? ????
+        System.out.println("producer <<< entryCount: " + entryCount);
 
+        // **** set the file position ****
+        long filePos = 0;
 
-        // **** loop reading and sending data to consumer (client) ****
-        int bytesToRead     = 0;
-        long bytesSent      = 0;
-        while (bytesSent < fileSize) {
+        // **** loop sending file objects to Consumer ****
+        for (int i = 0; i < entryCount; i++) {
 
-            // **** determine number of bytes to read ****
-            if (fileSize - bytesSent > ProducerAndConsumer.IO_BUFFER_SIZE)
-                bytesToRead = ProducerAndConsumer.IO_BUFFER_SIZE;
-            else
-                bytesToRead = (int)(fileSize - bytesSent);
-
-            // **** read data from the local file ****
-            int len = inStream.read(data, 0, bytesToRead);
-
-            // **** send data to consumer (client) ****
-            dos.write(data, 0, len);
-
-            // **** update the number of bytes sent to consumer (client) ****
-            bytesSent += len;
+            // **** for ease of use ****
+            String guid = arr[i].guid;
+            long length = arr[i].length;
 
             // ???? ????
-            // System.out.println("producer <<< bytesSent: " + bytesSent);
+            System.out.println("producer <<< length: " + length);
+
+            // **** number of bytes to skip ****
+            long skip = 0;
+            if (i == 0) {
+                skip = arr[i].offset;
+            } else {
+                skip = arr[i].offset - (arr[i - 1].offset + arr[i - 1].length);
+            }
+
+            // **** get to the specified offset ****
+            long skipped = inStream.skip(skip);
+
+            // ???? ????
+            System.out.println("producer <<< skip: " + skip + " skipped: " + skipped);
+
+            // **** loop reading and sending data to the Consumer (client) ****
+            int bytesToRead     = 0;
+            long bytesSent      = 0;
+            while (bytesSent < length) {
+
+                // **** determine number of bytes to read ****
+                if (length - bytesSent >= ProducerAndConsumer.IO_BUFFER_SIZE)
+                    bytesToRead = ProducerAndConsumer.IO_BUFFER_SIZE;
+                else
+                    bytesToRead = (int)(length - bytesSent);
+
+                // ???? ????
+                // System.out.println("producer <<< bytesToRead: " + bytesToRead);
+
+                // **** read data from the local file ****
+                int len = inStream.read(data, 0, bytesToRead);
+
+                // ???? ????
+                // System.out.println("producer <<<         len: " + len);
+
+                // **** send data to consumer (client) ****
+                dos.write(data, 0, len);
+
+                // **** update the number of bytes sent to consumer (client) ****
+                bytesSent += len;
+
+                // ???? ????
+                // System.out.println("producer <<<   bytesSent: " + bytesSent);
+            }
+
+            // ???? ????
+            System.out.println( "producer <<< guid ==>" + guid + "<== bytesSent: " + bytesSent + " length: " + length);
+
+            // **** update the file position ****
+            filePos += (skip + bytesSent);
+
+            // ???? ????
+            System.out.println("producer <<< filePos: " + filePos);
         }
+
+        // ???? ????
+        System.out.println("producer <<< diff: " + (fileSize - filePos));
 
         // **** end timer and compute duration ****
         long endTime    = System.currentTimeMillis();
@@ -371,9 +397,6 @@ public class Producer {
 
         // ???? ????
         System.out.println("producer <<< duration: " + duration + " ms.");
-
-        // ???? ????
-        System.out.println("producer <<< bytesSent: " + bytesSent);
 
         // **** close input stream ****
         inStream.close();
